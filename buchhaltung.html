@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CHEF Buchhaltung</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--mut:#6b6b70;--line:#e2e2e6;--acc:#0a6cff;--bad:#c62828;--ok:#2e7d32}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#f2f2f4;--mut:#9a9aa2;--line:#33333a;--acc:#5aa2ff;--bad:#ff6b6b;--ok:#6bd16f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 12px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+button,select,input,textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+button{cursor:pointer}button.p,nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:8px 0}.row label{display:grid;gap:3px;font-size:13px;color:var(--mut)}
+table{width:100%;border-collapse:collapse;margin:8px 0;display:block;overflow-x:auto}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.r{text-align:right}.bad{color:var(--bad)}.ok{color:var(--ok)}.mut{color:var(--mut);font-size:13px}
+pre{background:var(--line);padding:12px;border-radius:8px;overflow:auto}.card{border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0}
+#login{max-width:340px;margin:60px auto}.hide{display:none}
+</style></head><body><main>
+<div id="login"><h1>CHEF Buchhaltung</h1>
+ <p class="mut" id="demo"></p>
+ <div class="row"><label>Nummer<input id="num" value="admin"></label><label>PIN<input id="pin" type="password"></label>
+ <button class="p" onclick="login()">Anmelden</button></div><div id="lerr" class="bad"></div></div>
+<div id="app" class="hide"><h1>Buchhaltung</h1>
+<nav><button data-t="pay" class="on">Netto-Gehalt</button><button data-t="inv">Rechnungen</button><button data-t="sum">Auswertung</button><button onclick="logout()">Abmelden</button></nav>
+
+<section id="pay"><div class="row"><label>Mitarbeiter<select id="emp"></select></label>
+<label>Monat<input id="pm" type="month"></label><label>Stunden (optional)<input id="ph" type="number" step="0.5" style="width:110px"></label>
+<button class="p" onclick="prev()">Netto berechnen</button><button onclick="runAll()">Abrechnung für alle speichern</button></div>
+<details class="card"><summary>Lohndaten des Mitarbeiters</summary><div class="row" id="prof"></div><button onclick="saveProf()">Speichern</button></details>
+<pre id="slip">Mitarbeiter und Monat wählen, dann „Netto berechnen“.</pre><div id="pw" class="mut"></div>
+<h3>Gespeicherte Abrechnungen</h3><table id="slips"></table></section>
+
+<section id="inv" class="hide"><div class="row"><button onclick="loadInv('')">Alle</button><button onclick="loadInv('out')">Ausgang (Kunden)</button><button onclick="loadInv('in')">Eingang (Lieferanten)</button></div>
+<table id="invs"></table>
+<details class="card"><summary>Neue Rechnung</summary><div class="row">
+<label>Art<select id="ik"><option value="out">Ausgangsrechnung</option><option value="in">Eingangsrechnung</option></select></label>
+<label>Kunde / Lieferant<input id="ip"></label><label>Beleg-Nr. Lieferant<input id="ie"></label></div>
+<label class="mut">Anschrift<textarea id="ia" rows="2" style="width:100%"></textarea></label>
+<div class="row"><label>Leistung<input id="id" style="width:240px"></label><label>Menge<input id="iq" type="number" value="1" style="width:80px"></label>
+<label>Einzelpreis netto €<input id="iu" type="number" step="0.01" style="width:110px"></label>
+<label>USt<select id="it"><option>19</option><option>7</option><option>0</option></select></label><button onclick="addLine()">+ Position</button></div>
+<div id="lines" class="mut">Noch keine Positionen.</div><button class="p" onclick="saveInv()">Rechnung anlegen</button></details></section>
+
+<section id="sum" class="hide"><div class="row"><label>Monat<input id="sm" type="month"></label><button class="p" onclick="loadSum()">Anzeigen</button>
+<button onclick="csv()">CSV-Export (Steuerberater)</button></div><div id="sumout"></div></section>
+</div>
+<script>
+let T="",EMP=[],LINES=[];const $=i=>document.getElementById(i);
+const eur=c=>(c/100).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
+const now=new Date().toISOString().slice(0,7);
+async function api(p,o={}){const r=await fetch(p,{method:o.body?"POST":"GET",headers:{"Content-Type":"application/json",Authorization:"Bearer "+T},body:o.body?JSON.stringify(o.body):undefined});
+ if(r.status==401){logout();throw Error("Bitte neu anmelden")}
+ const ct=r.headers.get("content-type")||"";const d=ct.includes("json")?await r.json():await r.text();if(!r.ok)throw Error(d.error||r.status);return d}
+const guard=f=>async(...a)=>{try{await f(...a)}catch(e){alert(e.message)}};
+fetch("/demo/info").then(r=>r.ok?r.json():null).then(d=>{if(d)$("demo").innerHTML="Demo-Zugang: <b>admin</b> / <b>"+d.logins[0].pin+"</b>"}).catch(()=>{});
+async function login(){try{const r=await fetch("/auth/login",{method:"POST",body:JSON.stringify({number:$("num").value,pin:$("pin").value})});
+ const d=await r.json();if(!r.ok)throw Error(d.error);if(d.role!="admin")throw Error("Nur für Administratoren");T=d.token;
+ $("login").classList.add("hide");$("app").classList.remove("hide");init()}catch(e){$("lerr").textContent=e.message}}
+function logout(){T="";$("app").classList.add("hide");$("login").classList.remove("hide")}
+document.querySelectorAll("nav button[data-t]").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button[data-t]").forEach(x=>x.classList.toggle("on",x==b));
+ ["pay","inv","sum"].forEach(s=>$(s).classList.toggle("hide",s!=b.dataset.t));if(b.dataset.t=="inv")loadInv("");if(b.dataset.t=="sum")loadSum()});
+const PF=[["type","Art",["regulaer","minijob"]],["wage_type","Lohnart",["stunde","monat"]],["hourly_cents","Stundenlohn (Cent)"],["monthly_cents","Monatslohn (Cent)"],
+["tax_class","Steuerklasse",[1,2,3,4,5,6]],["kfb","Kinderfreibetrag-Zähler"],["children","Kinder"],["church","Kirchensteuer",[0,1]],["state","Bundesland (z.B. NW)"],["kv_zusatz","KV-Zusatzbeitrag %"]];
+async function init(){$("pm").value=$("sm").value=now;EMP=await api("/employees");$("emp").innerHTML=EMP.map(e=>`<option value="${e.id}">${e.name}</option>`).join("");$("emp").onchange=loadProf;loadProf();loadSlips()}
+const loadProf=guard(async()=>{const p=await api("/accounting/payroll/profile/"+$("emp").value);
+ $("prof").innerHTML=PF.map(([k,l,o])=>`<label>${l}`+(o?`<select data-k="${k}">${o.map(v=>`<option ${v==p[k]?"selected":""}>${v}</option>`).join("")}</select>`:`<input data-k="${k}" value="${p[k]}" style="width:120px">`)+`</label>`).join("")});
+const saveProf=guard(async()=>{const b={};document.querySelectorAll("#prof [data-k]").forEach(x=>{const v=x.value;b[x.dataset.k]=/^[\d.]+$/.test(v)&&x.dataset.k!="state"?+v:v});
+ await api("/accounting/payroll/profile/"+$("emp").value,{body:b});alert("Gespeichert")});
+const prev=guard(async()=>{const d=await api("/accounting/payroll/preview",{body:{employee_id:+$("emp").value,period:$("pm").value,hours:$("ph").value||null}});
+ $("slip").textContent=slipText(d);$("pw").textContent=d.warnings.join(" ")});
+function slipText(d){const c=d.calc,L=[`${d.name} · ${d.period} · Steuerklasse ${d.profile.tax_class} · ${c.kind}`,""];
+ if(d.hours!=null)L.push(`Stunden: ${d.hours}${d.estimated?" (Hochrechnung)":""}`);L.push(`Brutto:               ${eur(c.brutto)}`);
+ [["lohnsteuer","Lohnsteuer"],["soli","Soli"],["kist","Kirchensteuer"],["rv","Rentenvers."],["av","Arbeitslosenvers."],["kv","Krankenvers."],["pv","Pflegevers."]].forEach(([k,n])=>{if(c[k])L.push(`- ${n.padEnd(19)}${eur(c[k])}`)});
+ L.push("",`NETTO:                ${eur(c.netto)}`,`Arbeitgeberkosten:    ${eur(c.ag_cost)}`,"","Schätzung, keine amtliche Lohnabrechnung.");return L.join("\n")}
+const runAll=guard(async()=>{const d=await api("/accounting/payroll/run",{body:{period:$("pm").value}});alert(`Gespeichert: ${d.payslips.length} Abrechnungen, Netto gesamt ${eur(d.netto_total_cents)}`);loadSlips()});
+const loadSlips=guard(async()=>{const d=await api("/accounting/payslips");$("slips").innerHTML="<tr><th>Monat</th><th>Name</th><th class=r>Brutto</th><th class=r>Netto</th><th class=r>AG-Kosten</th><th></th></tr>"+
+ d.map(s=>`<tr><td>${s.period}</td><td>${s.name}</td><td class=r>${eur(s.brutto_cents)}</td><td class=r>${eur(s.netto_cents)}</td><td class=r>${eur(s.ag_cost_cents)}</td><td><button onclick="slipView(${s.id})">Ansehen</button></td></tr>`).join("")});
+const slipView=guard(async id=>{$("slip").textContent=await api(`/accounting/payslips/${id}/text`);scrollTo(0,0)});
+const loadInv=guard(async k=>{const d=await api("/accounting/invoices"+(k?"?kind="+k:""));$("invs").innerHTML="<tr><th>Nr.</th><th>Art</th><th>Partner</th><th>Datum</th><th>Fällig</th><th class=r>Brutto</th><th>Status</th><th></th></tr>"+
+ d.map(i=>`<tr><td>${i.number}</td><td>${i.kind=="out"?"Ausgang":"Eingang"}</td><td>${i.party}</td><td>${i.inv_date}</td><td>${i.due_date||""}</td><td class=r>${eur(i.gross_cents)}</td>
+ <td class="${i.overdue?"bad":i.status=="bezahlt"?"ok":""}">${i.overdue?"überfällig":i.status}</td><td><button onclick="pr(${i.id})">Drucken</button>${i.status=="offen"?` <button onclick="st(${i.id},'bezahlt')">bezahlt</button> <button onclick="st(${i.id},'storniert')">storno</button>`:""}</td></tr>`).join("")});
+const pr=guard(async id=>{const h=await api(`/accounting/invoices/${id}/print`);const w=open("","_blank");w.document.write(h);w.document.close()});
+const st=guard(async(id,s)=>{await api(`/accounting/invoices/${id}/status`,{body:{status:s}});loadInv("")});
+function addLine(){if(!$("id").value||!$("iu").value)return;LINES.push({description:$("id").value,qty:+$("iq").value,unit_cents:Math.round($("iu").value*100),tax_rate:+$("it").value});$("id").value=$("iu").value="";
+ $("lines").innerHTML=LINES.map(l=>`${l.qty} × ${l.description} · ${eur(l.unit_cents)} netto · ${l.tax_rate}% USt`).join("<br>")}
+const saveInv=guard(async()=>{const r=await api("/accounting/invoices",{body:{kind:$("ik").value,party:$("ip").value,address:$("ia").value,ext_number:$("ie").value||null,items:LINES}});
+ alert(`${r.number} angelegt (${eur(r.gross_cents)})`);LINES=[];$("lines").textContent="Noch keine Positionen.";loadInv("")});
+const loadSum=guard(async()=>{const s=await api("/accounting/summary?month="+$("sm").value);const rate=o=>Object.entries(o).map(([r,v])=>`${r}%: ${eur(v.net_cents)} netto / ${eur(v.tax_cents)} USt`).join("<br>")||"–";
+ $("sumout").innerHTML=`<div class=card><b>Umsatzsteuer</b><br>USt ${eur(s.ust_cents)} − Vorsteuer ${eur(s.vorsteuer_cents)} = <b>Zahllast ${eur(s.zahllast_cents)}</b></div>
+ <div class=card><b>Ergebnis (netto)</b><br>Einnahmen ${eur(s.income_net_cents)} − Ausgaben ${eur(s.expenses_net_cents)} − Personalkosten ${eur(s.payroll.ag_cost_cents)} = <b class="${s.result_cents<0?"bad":"ok"}">${eur(s.result_cents)}</b></div>
+ <div class=card><b>Kasse</b><br>${rate(s.pos_by_rate)}<br><span class=mut>${s.pos_payments.map(p=>`${p.method}: ${eur(p.cents)} (${p.orders})`).join(" · ")}</span></div>
+ <div class=card><b>Offen</b><br>Forderungen: ${s.open_out.count} / ${eur(s.open_out.cents)} · Verbindlichkeiten: ${s.open_in.count} / ${eur(s.open_in.cents)}</div><p class=mut>${s.note}</p>`});
+const csv=guard(async()=>{const t=await api("/accounting/export.csv?month="+$("sm").value);const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"}));a.download=`buchungen-${$("sm").value}.csv`;a.click()});
+</script></main></body></html>

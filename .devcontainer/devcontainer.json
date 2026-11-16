@@ -1,0 +1,8 @@
+{
+  "name": "CHEF Gastro Demo",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "containerEnv": { "CHEF_DEMO": "1", "CHEF_HOST": "0.0.0.0", "PORT": "8000" },
+  "forwardPorts": [8000],
+  "portsAttributes": { "8000": { "label": "CHEF Gastro", "onAutoForward": "openBrowser" } },
+  "postStartCommand": "nohup python chef.py serve > /tmp/chef.log 2>&1 &"
+}
