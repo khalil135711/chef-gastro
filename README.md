@@ -3,7 +3,8 @@
 Kassensystem für die Gastronomie mit Lager/MHD, Schichtplan, Mitarbeiter-Portal, **AI-Agent** (Claude optional)
 und neu: **Buchhaltung** mit Netto-Gehalt, Rechnungen, Umsatzsteuer und Auswertung.
 Nur Python-Standardbibliothek (3.9+), keine Installation nötig.
-
+### Demo:
+https://chef-gastro.onrender.com
 ## Schnellstart (lokal)
 
 ```bash
