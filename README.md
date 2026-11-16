@@ -11,7 +11,7 @@ git clone <dein-repo> && cd chef-gastro
 CHEF_DEMO=1 python chef.py serve        # Windows PowerShell: $env:CHEF_DEMO=1; python chef.py serve
 ```
 
-Dann öffnen: <http://localhost:8000/buchhaltung> (Buchhaltung) · `/portal` (Mitarbeiter) · `/` (Kasse)
+Dann öffnen: <http://localhost:8000/> (Kasse, Küche, Lager & MHD, Schichtplan, AI-Agent, Berichte) · `/buchhaltung` (Buchhaltung)
 
 ## Demo-Zugangsdaten (nur mit `CHEF_DEMO=1`, nur Testdaten)
 
@@ -72,5 +72,6 @@ Die GitHub-Action `.github/workflows/ci.yml` führt bei jedem Push die Tests aus
 
 `chef.py` Server, Kasse, Portal, Agent · `accounting.py` Buchhaltung · `buchhaltung.html` Oberfläche ·
 `licensing_stub.py` Einzelbetrieb-Ersatz (wird übersprungen, wenn eine eigene `licensing.py` im Ordner liegt) ·
-`tests/` Unit-Tests. Nicht enthalten, weil nicht hochgeladen: `index.html`, `index2.html`, `kunde.html`, `willkommen.html`,
-`bestellung.html` (fehlen sie, zeigt der Server eine Hinweisseite statt eines Fehlers).
+`index.html` Oberfläche für Kasse, Küche, Lager/MHD, Schichtplan, Agent · `tests/` Unit-Tests.
+Nicht enthalten: `index2.html` (`/portal`), `kunde.html`, `willkommen.html`, `bestellung.html` (Kundenkarte, Online-Bestellung); fehlen sie, zeigt der Server eine Hinweisseite statt eines Fehlers.
+Mitarbeiter sehen nach dem Login nur ihre Bereiche (z. B. Küche: Küche + Lager).

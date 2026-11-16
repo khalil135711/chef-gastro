@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CHEF Gastro</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--mut:#6b6b70;--line:#e2e2e6;--acc:#0a6cff;--bad:#c62828;--warn:#b26a00;--ok:#2e7d32;--card:#f5f5f7}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#f2f2f4;--mut:#9a9aa2;--line:#33333a;--acc:#5aa2ff;--bad:#ff6b6b;--warn:#ffb74d;--ok:#6bd16f;--card:#232327}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:14px}h1{font-size:20px;margin:0}h3{margin:16px 0 6px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+button,select,input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+button{cursor:pointer}button.p,nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}button.sm{padding:3px 8px;font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:8px 0}.row label{display:grid;gap:3px;font-size:13px;color:var(--mut)}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.r{text-align:right}.bad{color:var(--bad)}.warn{color:var(--warn)}.ok{color:var(--ok)}.mut{color:var(--mut);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}.prod{padding:14px 8px;text-align:center;background:var(--card);border-radius:10px;border:1px solid var(--line)}
+.two{display:grid;grid-template-columns:2fr 1fr;gap:14px}@media(max-width:760px){.two{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:760px){.cols{grid-template-columns:1fr}}
+.week{display:grid;grid-template-columns:repeat(7,minmax(110px,1fr));gap:6px;overflow-x:auto}.day{background:var(--card);border-radius:8px;padding:8px;min-height:90px}
+pre{background:var(--card);padding:12px;border-radius:8px;overflow:auto}#login{max-width:340px;margin:60px auto}.hide{display:none}
+#chat{max-height:50vh;overflow:auto}.msg{margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--card)}.me{background:var(--acc);color:#fff;margin-left:20%}
+</style></head><body><main>
+<div id="login"><h1>CHEF Gastro</h1><p class="mut" id="demo"></p>
+<div class="row"><label>Nummer<input id="num" value="admin"></label><label>PIN<input id="pin" type="password"></label><button class="p" onclick="login()">Anmelden</button></div><div id="lerr" class="bad"></div></div>
+<div id="app" class="hide"><header><h1>CHEF Gastro <span class="mut" id="who"></span></h1><button onclick="logout()">Abmelden</button></header><nav id="nav"></nav><div id="view"></div></div>
+<script>
+let T="",ME={},CART=[],TAB="",TIMER=null;const $=i=>document.getElementById(i);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const eur=c=>(c/100).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
+async function raw(p,body){const r=await fetch(p,{method:body?"POST":"GET",headers:{"Content-Type":"application/json",Authorization:"Bearer "+T},body:body?JSON.stringify(body):undefined});
+ if(r.status==401&&T){logout();throw Error("Bitte neu anmelden")}const ct=r.headers.get("content-type")||"";return{ok:r.ok,status:r.status,data:ct.includes("json")?await r.json():await r.text()}}
+async function api(p,body){const r=await raw(p,body);if(!r.ok)throw Error(r.data.error||r.status);return r.data}
+const G=f=>async(...a)=>{try{await f(...a)}catch(e){alert(e.message)}};
+fetch("/demo/info").then(r=>r.ok?r.json():null).then(d=>{if(d)$("demo").innerHTML="Demo: <b>admin</b> / <b>"+d.logins[0].pin+"</b> · Mitarbeiter z. B. <b>1001</b> / <b>1234</b>"}).catch(()=>{});
+const login=async()=>{try{const r=await fetch("/auth/login",{method:"POST",body:JSON.stringify({number:$("num").value,pin:$("pin").value})});const d=await r.json();if(!r.ok)throw Error(d.error);
+ T=d.token;ME=await api("/portal/me");$("login").classList.add("hide");$("app").classList.remove("hide");$("who").textContent="· "+ME.name;buildNav()}catch(e){$("lerr").textContent=e.message}};
+function logout(){T="";clearInterval(TIMER);$("app").classList.add("hide");$("login").classList.remove("hide")}
+const TABS=[["kasse","Kasse","kasse"],["kueche","Küche","kueche"],["lager","Lager & MHD","lager"],["plan","Schichtplan","*"],["agent","AI-Agent","admin"],["bericht","Berichte","admin"]];
+function buildNav(){const adm=ME.role=="admin",ok=t=>t=="*"||(t=="admin"?adm:adm||(ME.areas||[]).includes(t));
+ const tabs=TABS.filter(t=>ok(t[2]));$("nav").innerHTML=tabs.map(t=>`<button data-t="${t[0]}">${t[1]}</button>`).join("")+(adm?`<button onclick="location='/buchhaltung'">Buchhaltung ↗</button>`:"");
+ $("nav").querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>show(b.dataset.t));show(tabs[0][0])}
+function show(t){TAB=t;clearInterval(TIMER);document.querySelectorAll("#nav [data-t]").forEach(b=>b.classList.toggle("on",b.dataset.t==t));$("view").innerHTML="";({kasse,kueche,lager,plan,agent,bericht})[t]()}
+
+/* ---------- Kasse ---------- */
+let PRODS=[],CATS=[],CUST=[],TABLES=[];
+const kasse=G(async()=>{[PRODS,CATS,CUST,TABLES]=await Promise.all(["/products","/categories","/customers","/tables"].map(api));CART=[];renderKasse()});
+function renderKasse(cat){const ps=PRODS.filter(p=>!cat||p.category_id==cat);const tot=CART.reduce((s,l)=>s+l.qty*l.price_cents,0);
+ $("view").innerHTML=`<div class="two"><div><div class="row">${CATS.map(c=>`<button class="sm" onclick="renderKasse(${c.id})">${esc(c.name)}</button>`).join("")}<button class="sm" onclick="renderKasse()">Alle</button></div>
+ <div class="grid">${ps.map(p=>`<button class="prod" onclick="add(${p.id})"><b>${esc(p.name)}</b><br>${eur(p.price_cents)}<br><span class="mut">${p.tax_rate}% MwSt</span></button>`).join("")}</div></div>
+ <div class="card"><b>Bestellung</b>${CART.length?CART.map((l,i)=>`<div class="row" style="justify-content:space-between;margin:4px 0"><span>${l.qty}× ${esc(l.name)}</span><span>${eur(l.qty*l.price_cents)} <button class="sm" onclick="del(${i})">−</button></span></div>`).join(""):`<p class="mut">Noch leer.</p>`}
+ <h3>Summe ${eur(tot)}</h3><div class="row"><label>Tisch<select id="tb"><option value="">–</option>${TABLES.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("")}</select></label>
+ <label>Kunde (Treue)<select id="cu"><option value="">–</option>${CUST.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.orders_count})</option>`).join("")}</select></label>
+ <label>Zahlung<select id="pm"><option value="card">Karte</option><option value="cash">Bar</option></select></label></div><button class="p" onclick="pay()" ${CART.length?"":"disabled"}>Bezahlen (Simulation)</button></div></div><pre id="rc" class="hide"></pre>`}
+function add(id){const p=PRODS.find(x=>x.id==id),l=CART.find(x=>x.product_id==id);l?l.qty++:CART.push({product_id:id,name:p.name,price_cents:p.price_cents,qty:1});renderKasse()}
+function del(i){CART[i].qty--;if(!CART[i].qty)CART.splice(i,1);renderKasse()}
+const pay=G(async()=>{const r=await api("/orders",{items:CART.map(l=>({product_id:l.product_id,qty:l.qty})),payment_method:$("pm").value,customer_id:+$("cu").value||null,table_id:+$("tb").value||null});
+ const rc=await api(`/orders/${r.order_id}/receipt`);CART=[];renderKasse();$("rc").textContent=rc+(r.free_item?`\n🎁 Treue-Bonus: ${r.free_item} gratis`:"")+`\nAbholnummer: ${r.pickup_no}`;$("rc").classList.remove("hide")});
+
+/* ---------- Küche ---------- */
+function kueche(){const load=G(async()=>{const os=await api("/kitchen/orders");const col=(s,t,nx,lb)=>`<div><h3>${t}</h3>${os.filter(o=>o.status==s).map(o=>`<div class="card"><b>#${o.pickup_no}</b> ${o.tisch?esc(o.tisch):""} <span class="mut">${o.minutes} Min.</span>
+ ${o.items.map(i=>`<div>${i.qty}× ${esc(i.name)}</div>`).join("")}<div class="row">${nx?`<button class="sm p" onclick="st(${o.id},'${nx}')">${lb}</button>`:""}${s=="fertig"?`<button class="sm" onclick="ring(${o.id})">🔔 Rufen</button>`:""}</div></div>`).join("")||'<p class="mut">–</p>'}</div>`;
+ $("view").innerHTML=`<div class="cols">${col("neu","Neu","in_arbeit","Starten")}${col("in_arbeit","In Arbeit","fertig","Fertig")}${col("fertig","Fertig","abgeholt","Abgeholt")}</div><p class="mut">Aktualisiert sich alle 5 Sekunden.</p>`});
+ load();TIMER=setInterval(()=>TAB=="kueche"&&load(),5000)}
+const st=G(async(id,s)=>{await api(`/kitchen/orders/${id}/status`,{status:s});kueche()});const ring=G(async id=>{await api(`/kitchen/orders/${id}/ring`,{});alert("Gerufen")});
+
+/* ---------- Lager & MHD ---------- */
+const lager=G(async()=>{const[bs,mhd,ing,sg,fc,lg]=await Promise.all(["/stock/batches","/stock/mhd?days=3","/ingredients","/purchasing/suggestions","/stock/forecast","/stock/log"].map(api));
+ const cls=l=>l=="bad"?"bad":l=="warn"?"warn":"ok";
+ $("view").innerHTML=`${mhd.expired.length?`<div class="card bad"><b>⚠ Abgelaufen:</b> ${mhd.expired.map(b=>`${esc(b.ingredient)} (${b.qty} ${b.unit}, ${esc(b.status)})`).join(", ")}</div>`:""}
+ ${mhd.soon.length?`<div class="card warn"><b>Bald ablaufend:</b> ${mhd.soon.map(b=>`${esc(b.ingredient)} (${b.qty} ${b.unit}, ${esc(b.status)})`).join(", ")}</div>`:""}
+ <h3>Chargen nach MHD</h3><table><tr><th>Zutat</th><th class=r>Menge</th><th>Ort</th><th>MHD</th><th>Status</th><th></th></tr>${bs.map(b=>`<tr><td>${esc(b.ingredient)}</td><td class=r>${b.qty} ${esc(b.unit)}</td><td>${esc(b.location)}</td><td>${b.mhd||"–"}</td><td class="${cls(b.level)}">${esc(b.status)}</td>
+ <td><button class="sm" onclick="take(${b.ingredient_id},${b.id},${b.qty})">Entnehmen</button> <button class="sm" onclick="useUp(${b.id},'verbraucht')">verbraucht</button> <button class="sm" onclick="useUp(${b.id},'entsorgt')">entsorgen</button></td></tr>`).join("")}</table>
+ <h3>Wareneingang</h3><div class="row"><label>Zutat<select id="wi">${ing.map(i=>`<option value="${i.id}">${esc(i.name)} (${esc(i.unit)})</option>`).join("")}</select></label><label>Menge<input id="wq" type="number" step="any" style="width:90px"></label>
+ <label>MHD<input id="wm" type="date"></label><label>Lagerort<select id="wl"><option>Lager</option><option>Kühlschrank</option><option>Tiefkühler</option></select></label><button class="p" onclick="recv()">Einlagern</button></div>
+ <h3>Bestellvorschläge</h3>${sg.length?`<table>${sg.map(s=>`<tr><td>${esc(s.ingredient)}</td><td class=r>${s.order_qty} ${esc(s.unit)}</td><td class="mut">${esc(s.reason)}</td></tr>`).join("")}</table>`:'<p class="mut">Nichts zu bestellen.</p>'}
+ <h3>Prognose</h3><table><tr><th>Zutat</th><th class=r>Bestand</th><th class=r>Ø/Tag</th><th>Status</th></tr>${fc.map(f=>`<tr><td>${esc(f.ingredient)}</td><td class=r>${f.stock} ${esc(f.unit)}</td><td class=r>${f.avg_daily_use}</td><td>${esc(f.status)}</td></tr>`).join("")}</table>
+ <h3>Protokoll</h3><table>${lg.map(l=>`<tr><td>${l.ts.slice(5,16).replace("T"," ")}</td><td>${esc(l.ingredient)}</td><td>${esc(l.action)}</td><td class=r>${l.qty} ${esc(l.unit)}</td><td>${esc(l.who||"")}</td></tr>`).join("")}</table>`});
+const recv=G(async()=>{await api("/stock/receive",{ingredient_id:+$("wi").value,qty:+$("wq").value,mhd:$("wm").value||null,location:$("wl").value});lager()});
+const useUp=G(async(id,reason)=>{if(confirm(`Charge ${reason}?`)){await api("/stock/use",{batch_id:id,reason});lager()}});
+const take=G(async(ing,batch,max)=>{const q=prompt("Menge entnehmen (in den Kühlschrank):",max);if(!q)return;let b={ingredient_id:ing,batch_id:batch,qty:+q,to_location:"Kühlschrank"},r=await raw("/stock/take",b);
+ if(r.status==409){if(!confirm("Achtung:\n"+r.data.warnings.map(w=>"• "+w.text).join("\n")+"\n\nTrotzdem entnehmen?"))return;r=await raw("/stock/take",{...b,force:true})}
+ if(!r.ok)throw Error(r.data.error);lager()});
+
+/* ---------- Schichtplan ---------- */
+const monday=(d=new Date())=>{d=new Date(d);d.setDate(d.getDate()-((d.getDay()+6)%7));return d.toISOString().slice(0,10)};
+const plan=G(async()=>{if(ME.role!="admin"){$("view").innerHTML=`<h3>Meine Schichten</h3>${ME.shifts.length?`<table>${ME.shifts.map(s=>`<tr><td>${s.day}</td><td>${s.shift_start}–${s.shift_end}</td></tr>`).join("")}</table>`:'<p class="mut">Noch keine Schichten.</p>'}<p class="mut">Diese Woche: ${ME.hours_this_week} von max. ${ME.max_hours_week} Std.</p>`;return}
+ const ws=$("ws")?.value||monday(new Date(Date.now()+7*864e5));const d=await api("/shifts?week_start="+ws);
+ const days=[...Array(7)].map((_,i)=>{const x=new Date(ws);x.setDate(x.getDate()+i);return x.toISOString().slice(0,10)});const nm=["Mo","Di","Mi","Do","Fr","Sa","So"];
+ $("view").innerHTML=`<div class="row"><label>Woche ab (Montag)<input id="ws" type="date" value="${ws}" onchange="plan()"></label><label>Personen/Tag<input id="sp" type="number" value="2" min="1" style="width:80px"></label>
+ <label>von<input id="s1" value="10:00" style="width:80px"></label><label>bis<input id="s2" value="18:00" style="width:80px"></label><button class="p" onclick="gen()">Schichtplan erstellen</button></div>
+ ${d.warnings.map(w=>`<div class="warn">⚠ ${esc(w)}</div>`).join("")}<div class="week">${days.map((x,i)=>`<div class="day"><b>${nm[i]} ${x.slice(8)}.${x.slice(5,7)}.</b>${d.shifts.filter(s=>s.day==x).map(s=>`<div>${esc(s.name)}<br><span class="mut">${s.shift_start}–${s.shift_end}</span></div>`).join("")}</div>`).join("")}</div>
+ <h3>Stunden pro Mitarbeiter</h3><p>${Object.entries(d.hours_per_employee).map(([n,h])=>`${esc(n)}: <b>${h}</b> Std.`).join(" · ")||'<span class="mut">Noch kein Plan, bitte erstellen.</span>'}</p>
+ <p class="mut">Berücksichtigt Verfügbarkeit, Urlaub/Krankheit, Wunschtage und Maximalstunden.</p>`});
+const gen=G(async()=>{await api("/shifts/generate",{week_start:$("ws").value,staff_per_day:+$("sp").value,start:$("s1").value,end:$("s2").value});plan()});
+
+/* ---------- AI-Agent ---------- */
+let STATE=null;
+function agent(){$("view").innerHTML=`<div id="chat"></div><div class="row"><input id="q" placeholder="z. B. Umsatz diese Woche, Was muss ich bestellen?, Netto von Mehdi" style="flex:1" onkeydown="if(event.key=='Enter')ask()"><button class="p" onclick="ask()">Fragen</button></div><div id="opts" class="row"></div>`;ask("Hilfe",true)}
+const ask=G(async(txt,silent)=>{const q=txt||$("q").value;if(!q)return;$("q").value="";if(!silent)$("chat").innerHTML+=`<div class="msg me">${esc(q)}</div>`;
+ const r=await api("/agent/ask",{question:q,state:STATE});STATE=r.reset?null:(r.state||null);$("chat").innerHTML+=`<div class="msg">${esc(r.answer)}</div>`;$("chat").scrollTop=1e9;
+ $("opts").innerHTML=(r.options||[]).map(o=>`<button class="sm" onclick="ask(this.textContent)">${esc(o)}</button>`).join("")});
+
+/* ---------- Berichte ---------- */
+const bericht=G(async()=>{const s=await api("/reports/sales?days=7"),mx=Math.max(1,...s.per_day.map(d=>d.revenue_cents));
+ $("view").innerHTML=`<h3>Umsatz letzte 7 Tage: ${eur(s.revenue_cents)} (${s.orders} Bestellungen)</h3>${s.per_day.map(d=>`<div class="row" style="margin:3px 0;align-items:center"><span style="width:90px">${d.day.slice(5)}</span><div style="background:var(--acc);height:16px;border-radius:4px;width:${Math.round(d.revenue_cents/mx*60)}%"></div><span>${eur(d.revenue_cents)}</span></div>`).join("")}
+ <h3>Top-Produkte</h3><table>${s.top_products.map(p=>`<tr><td>${esc(p.name)}</td><td class=r>${p.sold}×</td><td class=r>${eur(p.revenue_cents)}</td></tr>`).join("")}</table>`});
+</script></main></body></html>
